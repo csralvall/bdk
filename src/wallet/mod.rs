@@ -785,7 +785,7 @@ where
         let drain_val = (coin_selection.selected_amount() - outgoing).saturating_sub(fee_amount);
 
         if tx.output.is_empty() {
-            if params.drain_to.is_some() {
+            if params.drain_wallet && params.drain_to.is_some() {
                 if drain_val.is_dust(&drain_output.script_pubkey) {
                     return Err(Error::InsufficientFunds {
                         needed: drain_output.script_pubkey.dust_value().as_sat(),
@@ -3050,6 +3050,15 @@ pub(crate) mod test {
             .drain_to(addr.script_pubkey())
             .drain_wallet()
             .enable_rbf();
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = true
+        // rbf = Some(Default)
         let (psbt, mut original_details) = builder.finish().unwrap();
         let mut tx = psbt.extract_tx();
         let txid = tx.txid();
@@ -3069,10 +3078,22 @@ pub(crate) mod test {
             .unwrap();
 
         let mut builder = wallet.build_fee_bump(txid).unwrap();
+        // build_fee_bump sets drain_wallet to Default
         builder
             .fee_rate(FeeRate::from_sat_per_vb(2.5))
             .allow_shrinking(addr.script_pubkey())
             .unwrap();
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = false
+        // rbf = None
+        // psbt shouldn't be finished if drain_wallet is set to false and
+        // there are no recipients (except for drain_to)
         let (psbt, details) = builder.finish().unwrap();
 
         assert_eq!(details.sent, original_details.sent);
@@ -3094,6 +3115,15 @@ pub(crate) mod test {
             .drain_to(addr.script_pubkey())
             .drain_wallet()
             .enable_rbf();
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = true
+        // rbf = Some(Default)
         let (psbt, mut original_details) = builder.finish().unwrap();
         let mut tx = psbt.extract_tx();
         let txid = tx.txid();
@@ -3113,10 +3143,22 @@ pub(crate) mod test {
             .unwrap();
 
         let mut builder = wallet.build_fee_bump(txid).unwrap();
+        // build_fee_bump sets drain_wallet to Default
         builder
             .allow_shrinking(addr.script_pubkey())
             .unwrap()
             .fee_absolute(300);
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = false
+        // rbf = None
+        // psbt shouldn't be finished if drain_wallet is set to false and
+        // there are no recipients (except for drain_to)
         let (psbt, details) = builder.finish().unwrap();
 
         assert_eq!(details.sent, original_details.sent);
@@ -3150,6 +3192,17 @@ pub(crate) mod test {
             .unwrap()
             .manually_selected_only()
             .enable_rbf();
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = false
+        // rbf = Some(Default)
+        // psbt shouldn't be finished if drain_wallet is set to false and
+        // there are no recipients (except for drain_to)
         let (psbt, mut original_details) = builder.finish().unwrap();
         let mut tx = psbt.extract_tx();
         let txid = tx.txid();
@@ -3172,11 +3225,20 @@ pub(crate) mod test {
         // for the new feerate, it should be enough to reduce the output, but since we specify
         // `drain_wallet` we expect to spend everything
         let mut builder = wallet.build_fee_bump(txid).unwrap();
+        // build_fee_bump sets drain_wallet to Default
         builder
             .drain_wallet()
             .allow_shrinking(addr.script_pubkey())
             .unwrap()
             .fee_rate(FeeRate::from_sat_per_vb(5.0));
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_wallet = false
+        // rbf = Some(Default)
         let (_, details) = builder.finish().unwrap();
         assert_eq!(details.sent, 75_000);
     }
@@ -3207,6 +3269,17 @@ pub(crate) mod test {
             .unwrap()
             .manually_selected_only()
             .enable_rbf();
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = false
+        // rbf = Some(Default)
+        // psbt shouldn't be finished if drain_wallet is set to false and
+        // there are no recipients (except for drain_to)
         let (psbt, mut original_details) = builder.finish().unwrap();
         let mut tx = psbt.extract_tx();
         let txid = tx.txid();
@@ -3380,6 +3453,17 @@ pub(crate) mod test {
             .unwrap()
             .manually_selected_only()
             .enable_rbf();
+        dbg!(&builder.params.recipients);
+        dbg!(&builder.params.drain_to);
+        dbg!(&builder.params.drain_wallet);
+        dbg!(&builder.params.rbf);
+        // TxParams:
+        // recipients = [] -- NO RECIPIENTS!!
+        // drain_to = addr.script_pubkey
+        // drain_wallet = false
+        // rbf = Some(Default)
+        // psbt shouldn't be finished if drain_wallet is set to false and
+        // there are no recipients (except for drain_to)
         let (psbt, mut original_details) = builder.finish().unwrap();
 
         let mut tx = psbt.extract_tx();
