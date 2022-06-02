@@ -1672,47 +1672,6 @@ pub fn get_funded_wallet(
     (wallet, descriptors, txid)
 }
 
-/// Return a fake wallet that appears to be funded for testing.
-pub fn get_funded_wallet_multiple_utxos(
-    descriptor: &str,
-) -> (Wallet<AnyDatabase>, (String, Option<String>), bitcoin::Txid) {
-    let descriptors = testutils!(@descriptors (descriptor));
-    let wallet = Wallet::new(
-        &descriptors.0,
-        None,
-        Network::Regtest,
-        AnyDatabase::Memory(MemoryDatabase::new()),
-    )
-    .unwrap();
-
-    let funding_address_kix = 0;
-
-    let tx_meta = testutils! {
-            @tx ( (@external descriptors, funding_address_kix) => 25_000, (@external descriptors, funding_address_kix+1) => 25_000 ) (@confirmations 1)
-    };
-
-    wallet
-        .database
-        .borrow_mut()
-        .set_script_pubkey(
-            &bitcoin::Address::from_str(&tx_meta.output.get(0).unwrap().to_address)
-                .unwrap()
-                .script_pubkey(),
-            KeychainKind::External,
-            funding_address_kix,
-        )
-        .unwrap();
-    wallet
-        .database
-        .borrow_mut()
-        .set_last_index(KeychainKind::External, funding_address_kix)
-        .unwrap();
-
-    let txid = crate::populate_test_db!(wallet.database.borrow_mut(), tx_meta, Some(100));
-
-    (wallet, descriptors, txid)
-}
-
 #[cfg(test)]
 pub(crate) mod test {
     use bitcoin::{util::psbt, Network};
@@ -2085,7 +2044,7 @@ pub(crate) mod test {
     #[test]
     #[should_panic(expected = "NoRecipients")]
     fn test_create_tx_subtle_drain_to() {
-        let (wallet, _, _) = get_funded_wallet_multiple_utxos(get_test_wpkh());
+        let (wallet, _, _) = get_funded_wallet(get_test_wpkh());
         let addr = wallet.get_address(New).unwrap();
         let mut builder = wallet.build_tx();
         builder.drain_to(addr.script_pubkey());
