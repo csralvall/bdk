@@ -52,7 +52,10 @@ pub use utils::IsDust;
 
 #[allow(deprecated)]
 use address_validator::AddressValidator;
-use coin_selection::DefaultCoinSelectionAlgorithm;
+use coin_selection::{
+    get_selection, DefaultCoinSelectionAlgorithm,
+    Excess::{Change, NoChange},
+};
 use signer::{SignOptions, SignerOrdering, SignersContainer, TransactionSigner};
 use tx_builder::{BumpFee, CreateTx, FeePolicy, TxBuilder, TxParams};
 use utils::{check_nlocktime, check_nsequence_rbf, After, Older, SecpCtx};
@@ -552,7 +555,7 @@ where
         }
     }
 
-    pub(crate) fn create_tx<Cs: coin_selection::CoinSelectionAlgorithm<D>>(
+    pub(crate) fn create_tx<Cs: coin_selection::CoinSelectionAlgorithm>(
         &self,
         coin_selection: Cs,
         params: TxParams,
@@ -777,15 +780,39 @@ where
             current_height,
         )?;
 
-        let coin_selection = coin_selection.coin_select(
-            self.database.borrow().deref(),
+        // prepare the drain script
+        let weighted_drain_script = {
+            let script_pubkey = match params.drain_to {
+                Some(ref drain_recipient) => drain_recipient.clone(),
+                None => self
+                    .get_internal_address(AddressIndex::New)?
+                    .address
+                    .script_pubkey(),
+            };
+
+            let satisfaction_weight = if params.drain_to.is_none() {
+                self.get_descriptor_for_keychain(KeychainKind::Internal)
+                    .max_satisfaction_weight()
+                    .unwrap()
+            } else {
+                0
+            };
+
+            WeightedScript {
+                satisfaction_weight,
+                script_pubkey,
+            }
+        };
+
+        let coin_selection = get_selection(
+            coin_selection,
             required_utxos,
             optional_utxos,
             fee_rate,
-            outgoing,
-            fee_amount,
+            outgoing + fee_amount,
+            &weighted_drain_script,
         )?;
-        let mut fee_amount = coin_selection.fee_amount;
+        fee_amount += coin_selection.fee_amount;
 
         tx.input = coin_selection
             .selected
@@ -798,25 +825,7 @@ where
             })
             .collect();
 
-        // prepare the drain output
-        let mut drain_output = {
-            let script_pubkey = match params.drain_to {
-                Some(ref drain_recipient) => drain_recipient.clone(),
-                None => self
-                    .get_internal_address(AddressIndex::New)?
-                    .address
-                    .script_pubkey(),
-            };
-
-            TxOut {
-                script_pubkey,
-                value: 0,
-            }
-        };
-
-        fee_amount += fee_rate.fee_vb(serialize(&drain_output).len());
-
-        let drain_val = (coin_selection.selected_amount() - outgoing).saturating_sub(fee_amount);
+        let excess = &coin_selection.excess;
 
         if tx.output.is_empty() {
             // Uh oh, our transaction has no outputs.
@@ -827,10 +836,15 @@ where
             // Otherwise, we don't know who we should send the funds to, and how much
             // we should send!
             if params.drain_to.is_some() && (params.drain_wallet || !params.utxos.is_empty()) {
-                if drain_val.is_dust(&drain_output.script_pubkey) {
+                if let NoChange {
+                    dust_threshold,
+                    remaining_amount,
+                    change_fee,
+                } = excess
+                {
                     return Err(Error::InsufficientFunds {
-                        needed: drain_output.script_pubkey.dust_value().as_sat(),
-                        available: drain_val,
+                        needed: *dust_threshold,
+                        available: remaining_amount.saturating_sub(*change_fee),
                     });
                 }
             } else {
@@ -838,15 +852,26 @@ where
             }
         }
 
-        if drain_val.is_dust(&drain_output.script_pubkey) {
-            fee_amount += drain_val;
-        } else {
-            drain_output.value = drain_val;
-            if self.is_mine(&drain_output.script_pubkey)? {
-                received += drain_val;
+        match excess {
+            NoChange {
+                remaining_amount, ..
+            } => fee_amount += remaining_amount,
+            Change { amount, fee } => {
+                let drain_script = weighted_drain_script.script_pubkey;
+                if self.is_mine(&drain_script)? {
+                    received += amount;
+                }
+                fee_amount += fee;
+
+                // create drain output
+                let drain_output = TxOut {
+                    value: *amount,
+                    script_pubkey: drain_script,
+                };
+
+                tx.output.push(drain_output);
             }
-            tx.output.push(drain_output);
-        }
+        };
 
         // sort input/outputs according to the chosen algorithm
         params.ordering.sort_tx(&mut tx);
