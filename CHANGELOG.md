@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add capacity to create FeeRate from sats/kvbytes and sats/kwu.
 - Rename `as_sat_vb` to `as_sat_per_vb`. Move all `FeeRate` test to `types.rs`.
 - Add custom Harware Wallet Signer `HwiSigner` in `src/wallet/harwaresigner/` module.
+- Added `get_selection()` function.
+- Added `SingleRandomDrawCoinSelection` algorithm.
+- Renamed `BranchAndBoundCoinSelection::bnb()` as `BranchAndBoundCoinSelection::coin_select()`.
+- Removed `BranchAndBoundCoinSelection::single_random_draw()`.
+- Changed `CoinSelectionAlgorithm::coin_select()` signature. The scope of the
+  selection was reduced to select utxos only from `optional_utxos` and create a
+  selection with its associated fee amount and nothing more.
+- Added `WeightedScript` struct.
+- Added type alias `FallBackCoinSelectionAlgorithm` for `SingleRandomDrawCoinSelection`.
 
 ## [v0.21.0] - [v0.20.0]
 

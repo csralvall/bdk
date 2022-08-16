@@ -55,7 +55,10 @@ pub use utils::IsDust;
 
 #[allow(deprecated)]
 use address_validator::AddressValidator;
-use coin_selection::DefaultCoinSelectionAlgorithm;
+use coin_selection::{
+    get_selection, DefaultCoinSelectionAlgorithm,
+    Excess::{Change, NoChange},
+};
 use signer::{SignOptions, SignerOrdering, SignersContainer, TransactionSigner};
 use tx_builder::{BumpFee, CreateTx, FeePolicy, TxBuilder, TxParams};
 use utils::{check_nlocktime, check_nsequence_rbf, After, Older, SecpCtx};
@@ -75,7 +78,6 @@ use crate::psbt::PsbtUtils;
 use crate::signer::SignerError;
 use crate::testutils;
 use crate::types::*;
-use crate::wallet::coin_selection::Excess::{Change, NoChange};
 
 const CACHE_ADDR_BATCH_SIZE: u32 = 100;
 const COINBASE_MATURITY: u32 = 100;
@@ -839,23 +841,40 @@ where
             current_height,
         )?;
 
-        // get drain script
-        let drain_script = match params.drain_to {
-            Some(ref drain_recipient) => drain_recipient.clone(),
-            None => self
-                .get_internal_address(AddressIndex::New)?
-                .address
-                .script_pubkey(),
+        // prepare the drain script
+        let weighted_drain_script = {
+            let script_pubkey = match params.drain_to {
+                Some(ref drain_recipient) => drain_recipient.clone(),
+                None => self
+                    .get_internal_address(AddressIndex::New)?
+                    .address
+                    .script_pubkey(),
+            };
+
+            let satisfaction_weight = if params.drain_to.is_none() {
+                self.get_descriptor_for_keychain(KeychainKind::Internal)
+                    .max_satisfaction_weight()
+                    .unwrap()
+            } else {
+                0
+            };
+
+            WeightedScript {
+                satisfaction_weight,
+                script_pubkey,
+            }
         };
 
-        let coin_selection = coin_selection.coin_select(
+        let coin_selection = get_selection(
+            coin_selection,
             self.database.borrow().deref(),
             required_utxos,
             optional_utxos,
             fee_rate,
             outgoing + fee_amount,
-            &drain_script,
+            &weighted_drain_script,
         )?;
+
         fee_amount += coin_selection.fee_amount;
         let excess = &coin_selection.excess;
 
@@ -900,6 +919,7 @@ where
                 remaining_amount, ..
             } => fee_amount += remaining_amount,
             Change { amount, fee } => {
+                let drain_script = weighted_drain_script.script_pubkey;
                 if self.is_mine(&drain_script)? {
                     received += amount;
                 }
