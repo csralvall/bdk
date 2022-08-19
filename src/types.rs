@@ -48,7 +48,7 @@ impl AsRef<[u8]> for KeychainKind {
 /// Fee rate
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 // Internally stored as satoshi/vbyte
-pub struct FeeRate(f32);
+pub struct FeeRate(pub f32);
 
 impl FeeRate {
     /// Create a new instance checking the value provided
